@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <pthread.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
@@ -8,6 +8,24 @@
 #define SERVER_NAME "s1"      // 服务器主机名（非IP地址）
 #define SERVER_PORT 8080      // 服务器端口号
 #define BUFFER_SIZE 1024      // 缓冲区大小，用于发送和接收数据
+
+void *receive_messages(void *arg) {
+    int sock = *(int *) arg;
+    char buffer[BUFFER_SIZE];
+
+    for (;;) {
+        memset(buffer, 0, BUFFER_SIZE);
+        ssize_t bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
+        if (bytes_received <= 0) {
+            printf("与服务器断开连接。\n");
+            break;
+        }
+        printf("\n[服务器]: %s\n> ", buffer);
+        fflush(stdout);
+    }
+
+    return NULL;
+}
 
 int main() {
     int sock = -1;                    // 客户端 socket 描述符，初始化为 -1 表示未创建
@@ -62,6 +80,14 @@ int main() {
     printf("已连接到服务器 %s:%d\n", SERVER_NAME, SERVER_PORT);
     printf("请输入消息，按回车发送，输入 'exit' 退出。\n");
     fflush(stdout);
+
+    // 创建接收消息的线程
+    pthread_t recv_thread;
+    if (pthread_create(&recv_thread, NULL, receive_messages, &sock) != 0) {
+        perror("接收线程创建失败");
+        close(sock);
+        return 1;
+    }
 
     // 7. 主循环，读取用户输入，发送给服务器
     while (1) {
