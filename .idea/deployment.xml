@@ -2,30 +2,24 @@
 <project version="4">
   <component name="PublishConfigData" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
-      <paths name="s1 (f0c63218-7026-448b-ad00-2cb3026f412a)">
+      <paths name="s1 (ab09f4b7-a7b8-48a8-a3ca-1964d5b922a6)">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="s2 (fa5b33a8-5365-4e5f-83a2-9f542d0496ee)">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/tmp/tmp.OecO7lcjrb/linux-chat-client-demo1" local="$PROJECT_DIR$" />
+            <mapping deploy="/tmp/tmp.lWzzioeKQd/linux-chat-client-demo1" local="$PROJECT_DIR$" />
           </mappings>
           <excludedPaths>
-            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug-s2" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug-s1" />
           </excludedPaths>
         </serverdata>
       </paths>
-      <paths name="s3 (fee2413b-0ec5-4b93-b1f0-224d856c6455)">
+      <paths name="s2 (ca7cd879-8145-4440-afdc-72dbe2f56a29)">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/tmp.eXbfaljwCK/linux-chat-client-demo1" local="$PROJECT_DIR$" />
+            <mapping deploy="/tmp/tmp.UU1VTlHiRG/linux-chat-client-demo1" local="$PROJECT_DIR$" />
           </mappings>
           <excludedPaths>
-            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug-s2" />
+            <excludedPath local="true" path="$PROJECT_DIR$/cmake-build-debug-s2" />
           </excludedPaths>
         </serverdata>
       </paths>

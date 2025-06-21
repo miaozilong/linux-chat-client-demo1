@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-
+#include <gtk/gtk.h>
 #define SERVER_NAME "s1"      // 服务器主机名（非IP地址）
 #define SERVER_PORT 8080      // 服务器端口号
 #define BUFFER_SIZE 1024      // 缓冲区大小，用于发送和接收数据
@@ -27,7 +27,31 @@ void *receive_messages(void *arg) {
     return NULL;
 }
 
-int main() {
+static void on_activate(GtkApplication *app, gpointer user_data) {
+    GtkWidget *window;
+    GtkWidget *label;
+
+    window = gtk_application_window_new(app);
+    gtk_window_set_title(GTK_WINDOW(window), "Hello111, GTK3");
+    gtk_window_set_default_size(GTK_WINDOW(window), 400, 200);
+
+    label = gtk_label_new("Hello, World!");
+    gtk_container_add(GTK_CONTAINER(window), label);
+
+    gtk_widget_show_all(window);
+}
+
+int main(int argc, char **argv) {
+    // GUI界面
+    GtkApplication *app;
+
+    app = gtk_application_new("com.example.HelloGTK3", G_APPLICATION_FLAGS_NONE);
+    g_signal_connect(app, "activate", G_CALLBACK(on_activate), NULL);
+
+    g_application_run(G_APPLICATION(app), argc, argv);
+    g_object_unref(app);
+
+
     int sock = -1;                    // 客户端 socket 描述符，初始化为 -1 表示未创建
     struct addrinfo hints, *res, *p; // 地址信息结构体，用于解析主机名
     char buffer[BUFFER_SIZE];         // 存储用户输入的缓冲区
@@ -118,5 +142,5 @@ int main() {
     // 11. 关闭 socket，释放资源
     close(sock);
 
-    return 0;  // 程序正常结束
+    return status;
 }
