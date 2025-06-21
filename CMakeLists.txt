@@ -10,4 +10,4 @@ link_directories(${GTK3_LIBRARY_DIRS})
 add_definitions(${GTK3_CFLAGS_OTHER})
 add_executable(linux_chat_client_demo1 main.c)
 
-target_link_libraries(linux_chat_client_demo1 ${GTK3_LIBRARIES})
+target_link_libraries(linux_chat_client_demo1 ${GTK3_LIBRARIES} pthread)

@@ -5,119 +5,230 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <gtk/gtk.h>
+
 #define SERVER_NAME "s1"      // 服务器主机名（非IP地址）
 #define SERVER_PORT 8080      // 服务器端口号
 #define BUFFER_SIZE 1024      // 缓冲区大小，用于发送和接收数据
 
+// 全局变量
+typedef struct {
+    GtkWidget *online_button;
+    GtkWidget *message_textview;
+    GtkWidget *input_entry;
+    GtkWidget *send_button;
+    GtkTextBuffer *text_buffer;
+    int sock;
+    pthread_t recv_thread;
+    gboolean is_connected;
+} ChatData;
+
+ChatData chat_data = {0};
+
+// 用于更新UI的辅助函数
+static gboolean update_message_display(gpointer data) {
+    char *message = (char *)data;
+    gtk_text_buffer_insert_at_cursor(chat_data.text_buffer, message, -1);
+    gtk_text_buffer_insert_at_cursor(chat_data.text_buffer, "\n", -1);
+    g_free(message);
+    return G_SOURCE_REMOVE;
+}
+
+// 接收消息的线程函数
 void *receive_messages(void *arg) {
-    int sock = *(int *) arg;
+    ChatData *data = (ChatData *)arg;
     char buffer[BUFFER_SIZE];
 
-    for (;;) {
+    while (data->is_connected) {
         memset(buffer, 0, BUFFER_SIZE);
-        ssize_t bytes_received = recv(sock, buffer, BUFFER_SIZE - 1, 0);
+        ssize_t bytes_received = recv(data->sock, buffer, BUFFER_SIZE - 1, 0);
         if (bytes_received <= 0) {
-            printf("与服务器断开连接。\n");
+            g_print("与服务器断开连接。\n");
             break;
         }
-        printf("\n[服务器]: %s\n> ", buffer);
-        fflush(stdout);
+        
+        // 在GTK主线程中更新UI
+        char *message = g_strdup(buffer);
+        g_idle_add(update_message_display, message);
     }
 
     return NULL;
 }
 
-int main(int argc, char **argv) {
-
-    int sock = -1;                    // 客户端 socket 描述符，初始化为 -1 表示未创建
-    struct addrinfo hints, *res, *p; // 地址信息结构体，用于解析主机名
-    char buffer[BUFFER_SIZE];         // 存储用户输入的缓冲区
-
-    // 1. 初始化 hints 结构体，指定需要 IPv4 和 TCP 套接字
-    memset(&hints, 0, sizeof(hints));  // 清空结构体内容
-    hints.ai_family = AF_INET;          // IPv4
-    hints.ai_socktype = SOCK_STREAM;    // TCP 连接（流式套接字）
-
-    // 2. 将端口号从整数转换成字符串，供 getaddrinfo 使用
-    char port_str[6];                  // 端口号字符串，最大5位数字加终止符
-    snprintf(port_str, sizeof(port_str), "%d", SERVER_PORT);
-
-    // 3. 调用 getaddrinfo 解析主机名和端口，获取服务器的地址信息链表
-    int status = getaddrinfo(SERVER_NAME, port_str, &hints, &res);
-    if (status != 0) {  // 解析失败时返回错误信息
-        fprintf(stderr, "getaddrinfo 错误: %s\n", gai_strerror(status));
-        return 1;       // 结束程序
+// 发送消息的回调函数
+void send_message_callback(GtkWidget *widget, gpointer data) {
+    ChatData *chat = (ChatData *)data;
+    
+    if (!chat->is_connected) {
+        g_print("请先点击上线按钮连接服务器\n");
+        return;
     }
+    
+    const char *message = gtk_entry_get_text(GTK_ENTRY(chat->input_entry));
+    if (strlen(message) == 0) {
+        return;
+    }
+    
+    // 发送消息到服务器
+    ssize_t sent = send(chat->sock, message, strlen(message), 0);
+    if (sent < 0) {
+        g_print("发送失败\n");
+        return;
+    }
+    
+    // 清空输入框
+    gtk_entry_set_text(GTK_ENTRY(chat->input_entry), "");
+}
 
-    // 4. 遍历 getaddrinfo 返回的所有地址，尝试逐个连接
+// 上线按钮的回调函数
+void online_button_callback(GtkWidget *widget, gpointer data) {
+    ChatData *chat = (ChatData *)data;
+    
+    if (chat->is_connected) {
+        // 如果已连接，则断开连接
+        chat->is_connected = FALSE;
+        if (chat->sock != -1) {
+            close(chat->sock);
+            chat->sock = -1;
+        }
+        gtk_button_set_label(GTK_BUTTON(chat->online_button), "上线");
+        gtk_widget_set_sensitive(chat->input_entry, FALSE);
+        gtk_widget_set_sensitive(chat->send_button, FALSE);
+        g_print("已断开连接\n");
+        return;
+    }
+    
+    // 连接服务器
+    struct addrinfo hints, *res, *p;
+    char buffer[BUFFER_SIZE];
+    
+    // 初始化 hints 结构体
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    
+    // 将端口号转换成字符串
+    char port_str[6];
+    snprintf(port_str, sizeof(port_str), "%d", SERVER_PORT);
+    
+    // 解析主机名
+    int status = getaddrinfo(SERVER_NAME, port_str, &hints, &res);
+    if (status != 0) {
+        g_print("getaddrinfo 错误: %s\n", gai_strerror(status));
+        return;
+    }
+    
+    // 尝试连接
     for (p = res; p != NULL; p = p->ai_next) {
-        // 创建 socket
-        sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (sock == -1) {                // 创建失败则打印错误，尝试下一个地址
-            perror("socket 创建失败");
+        chat->sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (chat->sock == -1) {
+            g_print("socket 创建失败\n");
             continue;
         }
-
-        // 尝试连接服务器
-        if (connect(sock, p->ai_addr, p->ai_addrlen) == 0) {
-            // 连接成功，跳出循环
+        
+        if (connect(chat->sock, p->ai_addr, p->ai_addrlen) == 0) {
             break;
         }
-
-        // 连接失败，关闭当前 socket，继续尝试下一个地址
-        close(sock);
-        sock = -1;
+        
+        close(chat->sock);
+        chat->sock = -1;
     }
-
-    // 5. 释放 getaddrinfo 分配的内存
+    
     freeaddrinfo(res);
-
-    // 6. 如果所有地址都连接失败，则打印错误，退出程序
-    if (sock == -1) {
-        fprintf(stderr, "无法连接到服务器 %s:%d\n", SERVER_NAME, SERVER_PORT);
-        return 1;
+    
+    if (chat->sock == -1) {
+        g_print("无法连接到服务器 %s:%d\n", SERVER_NAME, SERVER_PORT);
+        return;
     }
-
-    printf("已连接到服务器 %s:%d\n", SERVER_NAME, SERVER_PORT);
-    printf("请输入消息，按回车发送，输入 'exit' 退出。\n");
-    fflush(stdout);
-
+    
+    // 连接成功
+    chat->is_connected = TRUE;
+    gtk_button_set_label(GTK_BUTTON(chat->online_button), "下线");
+    gtk_widget_set_sensitive(chat->input_entry, TRUE);
+    gtk_widget_set_sensitive(chat->send_button, TRUE);
+    g_print("已连接到服务器 %s:%d\n", SERVER_NAME, SERVER_PORT);
+    
     // 创建接收消息的线程
-    pthread_t recv_thread;
-    if (pthread_create(&recv_thread, NULL, receive_messages, &sock) != 0) {
-        perror("接收线程创建失败");
-        close(sock);
-        return 1;
+    if (pthread_create(&chat->recv_thread, NULL, receive_messages, chat) != 0) {
+        g_print("接收线程创建失败\n");
+        close(chat->sock);
+        chat->sock = -1;
+        chat->is_connected = FALSE;
+        gtk_button_set_label(GTK_BUTTON(chat->online_button), "上线");
+        return;
     }
+}
 
-    // 7. 主循环，读取用户输入，发送给服务器
-    while (1) {
-        printf("> ");                   // 显示提示符
-        if (fgets(buffer, BUFFER_SIZE, stdin) == NULL) {
-            // 读取失败（如EOF），退出循环
-            printf("读取输入失败\n");
-            break;
-        }
-
-        // 8. 去除 fgets 读取到的字符串末尾换行符
-        buffer[strcspn(buffer, "\n")] = 0;
-
-        // 9. 判断是否输入退出命令
-        if (strcmp(buffer, "exit") == 0) {
-            printf("退出客户端\n");
-            break;                     // 跳出循环，结束程序
-        }
-
-        // 10. 发送数据到服务器
-        ssize_t sent = send(sock, buffer, strlen(buffer), 0);
-        if (sent < 0) {
-            perror("发送失败");
-            break;                     // 发送失败，退出循环
+// 窗口关闭的回调函数
+void window_destroy_callback(GtkWidget *widget, gpointer data) {
+    ChatData *chat = (ChatData *)data;
+    
+    if (chat->is_connected) {
+        chat->is_connected = FALSE;
+        if (chat->sock != -1) {
+            close(chat->sock);
         }
     }
+    
+    gtk_main_quit();
+}
 
-    // 11. 关闭 socket，释放资源
-    close(sock);
-
-    return status;
+int main(int argc, char **argv) {
+    // 初始化GTK
+    gtk_init(&argc, &argv);
+    
+    // 初始化聊天数据结构
+    chat_data.sock = -1;
+    chat_data.is_connected = FALSE;
+    
+    // 创建主窗口
+    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_title(GTK_WINDOW(window), "聊天客户端");
+    gtk_window_set_default_size(GTK_WINDOW(window), 400, 500);
+    g_signal_connect(window, "destroy", G_CALLBACK(window_destroy_callback), &chat_data);
+    
+    // 创建垂直布局容器
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gtk_container_add(GTK_CONTAINER(window), vbox);
+    
+    // 创建上线按钮
+    chat_data.online_button = gtk_button_new_with_label("上线");
+    g_signal_connect(chat_data.online_button, "clicked", G_CALLBACK(online_button_callback), &chat_data);
+    gtk_box_pack_start(GTK_BOX(vbox), chat_data.online_button, FALSE, FALSE, 5);
+    
+    // 创建消息显示区域
+    GtkWidget *scrolled_window = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(scrolled_window, -1, 300);
+    gtk_box_pack_start(GTK_BOX(vbox), scrolled_window, TRUE, TRUE, 5);
+    
+    chat_data.text_buffer = gtk_text_buffer_new(NULL);
+    chat_data.message_textview = gtk_text_view_new_with_buffer(chat_data.text_buffer);
+    gtk_text_view_set_editable(GTK_TEXT_VIEW(chat_data.message_textview), FALSE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(chat_data.message_textview), GTK_WRAP_WORD_CHAR);
+    gtk_container_add(GTK_CONTAINER(scrolled_window), chat_data.message_textview);
+    
+    // 创建水平布局容器用于输入框和发送按钮
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 5);
+    
+    // 创建输入框
+    chat_data.input_entry = gtk_entry_new();
+    gtk_widget_set_sensitive(chat_data.input_entry, FALSE);
+    gtk_box_pack_start(GTK_BOX(hbox), chat_data.input_entry, TRUE, TRUE, 0);
+    
+    // 创建发送按钮
+    chat_data.send_button = gtk_button_new_with_label("发送");
+    gtk_widget_set_sensitive(chat_data.send_button, FALSE);
+    g_signal_connect(chat_data.send_button, "clicked", G_CALLBACK(send_message_callback), &chat_data);
+    gtk_box_pack_start(GTK_BOX(hbox), chat_data.send_button, FALSE, FALSE, 0);
+    
+    // 为输入框添加回车键事件
+    g_signal_connect(chat_data.input_entry, "activate", G_CALLBACK(send_message_callback), &chat_data);
+    
+    // 显示窗口
+    gtk_widget_show_all(window);
+    
+    // 启动GTK主循环
+    gtk_main();
+    
+    return 0;
 }
